@@ -13,14 +13,12 @@ class VectorQuantizer(nn.Module):
     Inputs:
     - n_e : number of embeddings
     - e_dim : dimension of embedding
-    - beta : commitment cost used in loss term, beta * ||z_e(x)-sg[e]||^2
     """
 
-    def __init__(self, n_e, e_dim, beta):
+    def __init__(self, n_e, e_dim):
         super(VectorQuantizer, self).__init__()
         self.n_e = n_e
         self.e_dim = e_dim
-        self.beta = beta
 
         self.embedding = nn.Embedding(self.n_e, self.e_dim)
         self.embedding.weight.data.uniform_(-1.0 / self.n_e, 1.0 / self.n_e)
@@ -59,22 +57,18 @@ class VectorQuantizer(nn.Module):
         min_encodings.scatter_(1, min_encoding_indices, 1)
 
         # get quantized latent vectors
-        z_q = torch.matmul(min_encodings, self.embedding.weight).view(z.shape)
+        e = torch.matmul(min_encodings, self.embedding.weight).view(z.shape)
         min_encoding_indices = min_encoding_indices.view(z.shape[:-1])
 
-        # compute loss for embedding
-        loss = torch.mean((z_q.detach() - z) ** 2) + self.beta * torch.mean(
-            (z_q - z.detach()) ** 2
-        )
-
         # preserve gradients
-        z_q = z + (z_q - z).detach()
+        z_q = z + (e - z).detach()
 
         # perplexity
         e_mean = torch.mean(min_encodings, dim=0)
         perplexity = torch.exp(-torch.sum(e_mean * torch.log(e_mean + 1e-10)))
 
         # reshape back to match original input shape
+        e = e.permute(0, 3, 1, 2).contiguous()
         z_q = z_q.permute(0, 3, 1, 2).contiguous()
 
-        return loss, z_q, perplexity, min_encodings, min_encoding_indices
+        return e, z_q, perplexity, min_encodings, min_encoding_indices

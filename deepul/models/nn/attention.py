@@ -1,5 +1,3 @@
-# credits: eugen hotaj https://github.com/EugenHotaj/pytorch-generative/blob/master/pytorch_generative/nn/attention.py
-
 import functools
 import math
 
@@ -30,6 +28,8 @@ def positional_encoding(d_model, max_len):
 @functools.lru_cache(maxsize=32)
 def image_positional_encoding(shape):
     """Generates positional encodings for 2d images.
+
+    Copied from https://github.com/EugenHotaj/pytorch-generative/blob/master/pytorch_generative/nn/attention.py.
 
     The positional encoding is a Tensor of shape (N, 2, H, W) of (x, y) pixel
     coordinates scaled to be between -.5 and .5.
