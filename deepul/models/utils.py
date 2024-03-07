@@ -1,7 +1,17 @@
-from typing import Union, Iterable, List, Dict, Tuple, Optional
-
 import torch
 import torch.nn as nn
+
+
+class Summation(nn.Module):
+    def __init__(self, dim=None) -> None:
+        super().__init__()
+        self.dim=dim
+
+    def forward(self, x):
+        return torch.sum(x, dim=self.dim)
+
+    def extra_repr(self) -> str:
+        return f'dim={self.dim}'
 
 
 class Embedding(nn.Embedding):

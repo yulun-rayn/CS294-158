@@ -370,11 +370,7 @@ class HVAEConv(VAEConv):
         return x_mean, qs, ps
 
     def loss_kldivs(self, qs, ps):
-        kldivs = [self.loss_kldiv(q[0], q[1], p[0], p[1]) for q, p in zip(qs, ps)]
-        if self.loss_reduce == "all":
-            return sum(kldivs)/len(kldivs)
-        else:
-            return sum(kldivs)
+        return sum([self.loss_kldiv(q[0], q[1], p[0], p[1]) for q, p in zip(qs, ps)])
 
     def loss(self, x):
         x = x.to(next(self.parameters()).device)

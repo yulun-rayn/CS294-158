@@ -7,7 +7,7 @@ class MLP(nn.Module):
     A multilayer perceptron with ReLU activations and optional BatchNorm.
     """
 
-    def __init__(self, sizes, batch_norm=True, final_act=None):
+    def __init__(self, sizes, batch_norm=True, act="relu", final_act=None):
         super().__init__()
         layers = []
         for i in range(len(sizes) - 1):
@@ -19,13 +19,17 @@ class MLP(nn.Module):
                 None,
 
                 nn.ReLU()
-                    if i < len(sizes) - 2 else
+                    if act == "relu" and i < len(sizes) - 2 else
+                nn.LeakyReLU(0.2) 
+                    if act == "leaky_relu" and i < len(sizes) - 2 else
                 None
             ]
         if final_act is None:
             pass
         elif final_act == "relu":
             layers += [nn.ReLU()]
+        elif final_act == "tanh":
+            layers += [nn.Tanh()]
         elif final_act == "sigmoid":
             layers += [nn.Sigmoid()]
         elif final_act == "softmax":

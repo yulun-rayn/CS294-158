@@ -89,8 +89,10 @@ class VAE(nn.Module):
 
         if self.loss_reduce == "all":
             return nllhs.mean()
+        elif self.loss_reduce == "batch":
+            return nllhs.mean(0).sum()
         else:
-            return nllhs.sum(tuple(range(1, nllhs.ndim))).mean()
+            return nllhs.mean(self.loss_reduce).sum()
 
     def loss_kldiv(self, q_mean, q_std, p_mean=None, p_std=None):
         if p_mean is None:
@@ -104,8 +106,10 @@ class VAE(nn.Module):
 
         if self.loss_reduce == "all":
             return kldivs.mean()
+        elif self.loss_reduce == "batch":
+            return kldivs.mean(0).sum()
         else:
-            return kldivs.sum(tuple(range(1, kldivs.ndim))).mean()
+            return kldivs.mean(self.loss_reduce).sum()
 
     def loss(self, x):
         x = x.to(next(self.parameters()).device)

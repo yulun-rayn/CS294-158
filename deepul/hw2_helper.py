@@ -46,7 +46,6 @@ def train_epoch(model, train_loader, optimizer, epoch, quiet, grad_clip=None):
         pbar.close()
     return losses
 
-
 def test(model, data_loader, quiet):
     model.eval()
     total_losses = OrderedDict()
@@ -64,7 +63,6 @@ def test(model, data_loader, quiet):
         if not quiet:
             print(desc)
     return total_losses
-
 
 def train(model, train_loader, test_loader,
           lr=1e-3, epochs=10, grad_clip=None, quiet=False):

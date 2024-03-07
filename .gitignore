@@ -1,6 +1,7 @@
 # My addition
 .DS_Store
 .vscode
+*-py
 *.aux
 *.fdb_latexmk
 *.fls
@@ -9,7 +10,9 @@
 *.pdf
 *.gz
 *.pkl
+*.pt
 *.pth
+*.jpg
 *.zip
 
 # Byte-compiled / optimized / DLL files

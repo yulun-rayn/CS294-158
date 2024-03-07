@@ -20,14 +20,15 @@ class VQVAE(nn.Module):
         n_embeddings,
         embedding_dim,
         beta=1.0,
+        data_dim=3,
         min_val=0,
         max_val=3,
-        save_img_embedding_map=False,
+        channel_first=False,
         loss_reduce="all"
     ):
         super(VQVAE, self).__init__()
         # encode image into continuous latent space
-        self.encoder = Encoder(3, h_dim, n_res_layers, res_h_dim)
+        self.encoder = Encoder(data_dim, h_dim, n_res_layers, res_h_dim)
         self.pre_quantization_conv = nn.Conv2d(
             h_dim, embedding_dim, kernel_size=1, stride=1
         )
@@ -36,16 +37,12 @@ class VQVAE(nn.Module):
         # decode the discrete latent representation
         self.decoder = Decoder(embedding_dim, h_dim, n_res_layers, res_h_dim)
 
-        if save_img_embedding_map:
-            self.img_to_embedding_map = {i: [] for i in range(n_embeddings)}
-        else:
-            self.img_to_embedding_map = None
-
         self.n_embeddings = n_embeddings
         self.embedding_dim = embedding_dim
         self.beta = beta
+        self.channel_first = channel_first
         self.loss_reduce = loss_reduce
-        self.offset = (max_val - min_val) / 2.
+        self.shift = (min_val + max_val) / 2.
 
     def quantize(self, x: np.ndarray) -> np.ndarray:
         """Quantize an image x.
@@ -102,16 +99,21 @@ class VQVAE(nn.Module):
 
         if self.loss_reduce == "all":
             return ses.mean()
+        elif self.loss_reduce == "batch":
+            return ses.mean(0).sum()
         else:
-            return ses.sum(tuple(range(1, ses.ndim))).mean()
+            return ses.mean(self.loss_reduce).sum()
     
     def loss_emb(self, z_e, e):
         ses = (z_e.detach() - e)**2 + self.beta * (z_e - e.detach())**2
+        ses = ses[:, None, :, :]
 
         if self.loss_reduce == "all":
             return ses.mean()
+        elif self.loss_reduce == "batch":
+            return ses.mean(0).sum()
         else:
-            return ses.sum(tuple(range(1, ses.ndim))).mean()
+            return ses.mean(self.loss_reduce).sum()
 
     def loss(self, x):
         x_hat, z_e, e = self(x)
@@ -123,7 +125,11 @@ class VQVAE(nn.Module):
             recon_loss=recon_loss, kldiv_loss=emb_loss)
 
     def transform(self, x):
-        return x.permute(0, 3, 1, 2) - self.offset
+        if not self.channel_first:
+            x = x.permute(0, 3, 1, 2)
+        return x - self.shift
 
     def reverse(self, x):
-        return x.permute(0, 2, 3, 1) + self.offset
+        if not self.channel_first:
+            x.permute(0, 2, 3, 1)
+        return x + self.shift

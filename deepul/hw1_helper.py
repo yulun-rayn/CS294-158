@@ -165,7 +165,7 @@ def q2ab_save_results(dset_type, part, fn, data_dir="data/", save_dir="data/"):
         raise Exception()
 
     train_losses, test_losses, samples, model = fn(train_data, test_data, dset_type)
-    torch.save(model.state_dict(), join(save_dir, f"q2-{dset_type}-{part}.pkl"))
+    torch.save(model.state_dict(), join(save_dir, f"q2-{dset_type}-{part}.pt"))
     samples = samples.astype("float32") / channel * 255
 
     print(f"Final Test Loss: {test_losses[-1]:.4f}")
@@ -233,7 +233,7 @@ def q3ab_save_results(dset_type, part, fn, data_dir="data/", save_dir="data/"):
         raise Exception()
 
     train_losses, test_losses, samples, model = fn(train_data, test_data, dset_type)
-    torch.save(model.state_dict(), join(save_dir, f"q3-{dset_type}-{part}.pkl"))
+    torch.save(model.state_dict(), join(save_dir, f"q3-{dset_type}-{part}.pt"))
     samples = samples.astype("float32") / channel * 255
 
     print(f"Final Test Loss: {test_losses[-1]:.4f}")
@@ -322,7 +322,7 @@ def q4b_save_results(dset_type, fn, data_dir="data/", save_dir="data/"):
         raise Exception()
 
     train_losses, test_losses, samples, model = fn(train_data, test_data, dset_type, vqvae)
-    torch.save(model.state_dict(), join(save_dir, f"q4-{dset_type}-b.pkl"))
+    torch.save(model.state_dict(), join(save_dir, f"q4-{dset_type}-b.pt"))
     samples = samples.astype("float32") / 3 * 255
 
     print(f"Final Test Loss: {test_losses[-1]:.4f}")
@@ -362,7 +362,7 @@ def q5a_save_results(fn, data_dir="data/", save_dir="data/"):
         test_data,
         encoder
     )
-    torch.save(model.state_dict(), join(save_dir, f"q5-a.pkl"))
+    torch.save(model.state_dict(), join(save_dir, f"q5-a.pt"))
 
     print(f"Final Test Loss: {test_losses[-1]:.4f}")
     save_training_plot(

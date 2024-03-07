@@ -61,8 +61,10 @@ class VAEConv(VAE):
 
         if self.loss_reduce == "all":
             return ses.mean()
+        elif self.loss_reduce == "batch":
+            return ses.mean(0).sum()
         else:
-            return ses.sum(tuple(range(1, ses.ndim))).mean()
+            return ses.mean(self.loss_reduce).sum()
 
     def init_encoder(self):
         return MLConv(
