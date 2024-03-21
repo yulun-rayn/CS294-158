@@ -1,148 +1,34 @@
 # credits: thuan h. nguyen https://github.com/thuanz123/enhancing-transformers/blob/main/enhancing/modules/stage1/layers.py
 
-import math
-import numpy as np
 from typing import Union, Tuple, List
-from collections import OrderedDict
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-
-def get_2d_sincos_pos_embed(embed_dim, grid_size):
-    """
-    grid_size: int or (int, int) of the grid height and width
-    return:
-    pos_embed: [grid_size*grid_size, embed_dim] or [1+grid_size*grid_size, embed_dim] (w/ or w/o cls_token)
-    """
-    grid_size = (grid_size, grid_size) if type(grid_size) != tuple else grid_size
-    grid_h = np.arange(grid_size[0], dtype=np.float32)
-    grid_w = np.arange(grid_size[1], dtype=np.float32)
-    grid = np.meshgrid(grid_w, grid_h)  # here w goes first
-    grid = np.stack(grid, axis=0)
-
-    grid = grid.reshape([2, 1, grid_size[0], grid_size[1]])
-    pos_embed = get_2d_sincos_pos_embed_from_grid(embed_dim, grid)
-
-    return pos_embed
-
-
-def get_2d_sincos_pos_embed_from_grid(embed_dim, grid):
-    assert embed_dim % 2 == 0
-
-    # use half of dimensions to encode grid_h
-    emb_h = get_1d_sincos_pos_embed_from_grid(embed_dim // 2, grid[0])  # (H*W, D/2)
-    emb_w = get_1d_sincos_pos_embed_from_grid(embed_dim // 2, grid[1])  # (H*W, D/2)
-
-    emb = np.concatenate([emb_h, emb_w], axis=1) # (H*W, D)
-    return emb
-
-
-def get_1d_sincos_pos_embed_from_grid(embed_dim, pos):
-    """
-    embed_dim: output dimension for each position
-    pos: a list of positions to be encoded: size (M,)
-    out: (M, D)
-    """
-    assert embed_dim % 2 == 0
-    omega = np.arange(embed_dim // 2, dtype=np.float32)
-    omega /= embed_dim / 2.
-    omega = 1. / 10000**omega  # (D/2,)
-
-    pos = pos.reshape(-1)  # (M,)
-    out = np.einsum('m,d->md', pos, omega)  # (M, D/2), outer product
-
-    emb_sin = np.sin(out) # (M, D/2)
-    emb_cos = np.cos(out) # (M, D/2)
-
-    emb = np.concatenate([emb_sin, emb_cos], axis=1)  # (M, D)
-    return emb
-
-
-def init_weights(m):
-    if isinstance(m, nn.Linear):
-        # we use xavier_uniform following official JAX ViT:
-        torch.nn.init.xavier_uniform_(m.weight)
-        if m.bias is not None:
-            nn.init.constant_(m.bias, 0)
-    elif isinstance(m, nn.LayerNorm):
-        nn.init.constant_(m.bias, 0)
-        nn.init.constant_(m.weight, 1.0)
-    elif isinstance(m, nn.Conv2d) or isinstance(m, nn.ConvTranspose2d):
-        w = m.weight.data
-        torch.nn.init.xavier_uniform_(w.view([w.shape[0], -1]))
-
-
-class PreNorm(nn.Module):
-    def __init__(self, dim: int, fn: nn.Module) -> None:
-        super().__init__()
-        self.norm = nn.LayerNorm(dim)
-        self.fn = fn
-
-    def forward(self, x: torch.FloatTensor, **kwargs) -> torch.FloatTensor:
-        return self.fn(self.norm(x), **kwargs)
-
-
-class FeedForward(nn.Module):
-    def __init__(self, dim: int, hidden_dim: int) -> None:
-        super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(dim, hidden_dim),
-            nn.Tanh(),
-            nn.Linear(hidden_dim, dim)
-        )
-
-    def forward(self, x: torch.FloatTensor) -> torch.FloatTensor:
-        return self.net(x)
-
-
-class Attention(nn.Module):
-    def __init__(self, dim: int, heads: int = 8, dim_head: int = 64) -> None:
-        super().__init__()
-        inner_dim = dim_head * heads
-        project_out = not (heads == 1 and dim_head == dim)
-
-        self.heads = heads
-        self.scale = dim_head ** -0.5
-
-        self.attend = nn.Softmax(dim = -1)
-        self.to_qkv = nn.Linear(dim, inner_dim * 3, bias = False)
-
-        self.to_out = nn.Linear(inner_dim, dim) if project_out else nn.Identity()
-
-    def forward(self, x: torch.FloatTensor) -> torch.FloatTensor:
-        b, n, _ = x.shape
-
-        qkv = self.to_qkv(x)
-        qkv = qkv.reshape(b, n, self.heads, -1).permute(0, 2, 1, 3)
-        q, k, v = qkv.chunk(3, dim = -1)
-
-        attn = torch.matmul(q, k.transpose(-1, -2)) * self.scale
-        attn = self.attend(attn)
-
-        out = torch.matmul(attn, v)
-        out = out.permute(0, 2, 1, 3).reshape(b, n, -1)
-
-        return self.to_out(out)
+from deepul.models.nn.attention import SimpleAttention
+from deepul.models.nn.mlp import FeedForward
+from deepul.models.vit.utils import get_2d_sincos_pos_embed, init_weights
+from deepul.models.utils import PreNorm
 
 
 class Transformer(nn.Module):
-    def __init__(self, dim: int, depth: int, heads: int, dim_head: int, mlp_dim: int) -> None:
+    def __init__(self, dim: int, depth: int, heads: int, dim_head: int, mlp_dim: int, out_norm: bool = True) -> None:
         super().__init__()
         self.layers = nn.ModuleList([])
         for idx in range(depth):
-            layer = nn.ModuleList([PreNorm(dim, Attention(dim, heads=heads, dim_head=dim_head)),
-                                   PreNorm(dim, FeedForward(dim, mlp_dim))])
+            layer = nn.ModuleList([PreNorm(dim, SimpleAttention(dim, heads=heads, dim_head=dim_head)),
+                                   PreNorm(dim, FeedForward(dim, mlp_dim, activation="tanh"))])
             self.layers.append(layer)
-        self.norm = nn.LayerNorm(dim)
+
+        self.norm = nn.LayerNorm(dim) if out_norm else None
 
     def forward(self, x: torch.FloatTensor) -> torch.FloatTensor:
         for attn, ff in self.layers:
             x = attn(x) + x
             x = ff(x) + x
 
-        return self.norm(x)
+        return self.norm(x) if self.norm is not None else x
 
 
 class ViTEncoder(nn.Module):

@@ -16,8 +16,8 @@ class TransformerBlock(nn.Module):
             in_channels=d_model,
             embed_channels=d_model,
             out_channels=d_model,
-            n_dims=n_dims,
             n_heads=n_heads,
+            n_dims=n_dims,
         )
 
         mod = nn.Conv1d if n_dims==1 else nn.Conv2d if n_dims==2 else nn.Conv3d

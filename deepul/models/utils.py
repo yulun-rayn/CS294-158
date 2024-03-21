@@ -29,3 +29,13 @@ class LayerNorm(nn.LayerNorm):
         x = x.permute(0, *range(2, len(x.shape)), 1)
         x = super().forward(x)
         return x.permute(0, len(x.shape)-1, *range(1, len(x.shape)-1))
+
+
+class PreNorm(nn.Module):
+    def __init__(self, dim: int, fn: nn.Module, *args, **kwargs) -> None:
+        super().__init__()
+        self.norm = nn.LayerNorm(dim, *args, **kwargs)
+        self.fn = fn
+
+    def forward(self, x: torch.FloatTensor, **kwargs) -> torch.FloatTensor:
+        return self.fn(self.norm(x), **kwargs)

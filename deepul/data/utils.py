@@ -36,6 +36,20 @@ class IntDataset:
         return len(self.data)
 
 
+class LabeledDataset:
+    def __init__(self, data, labels, dropout=0.):
+        self.data = torch.FloatTensor(data)
+        self.labels = labels
+        self.dropout = dropout
+
+    def __getitem__(self, index):
+        return (self.data[index], self.labels[index]
+            if self.dropout <= 0 or random.random() > self.dropout else -1)
+
+    def __len__(self):
+        return len(self.labels)
+
+
 class SeqDataset:
     def __init__(self, data, max_len=128, pad_value=-1):
         self.max_len = max_len

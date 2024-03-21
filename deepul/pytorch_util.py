@@ -1,4 +1,5 @@
 import torch
+import math
 import numpy as np
 
 
@@ -33,6 +34,21 @@ def fanin_init_weights_like(tensor):
     new_tensor = FloatTensor(tensor.size())
     new_tensor.uniform_(-bound, bound)
     return new_tensor
+
+def cosine_lr_lambda(total_steps, warmup_steps=100, cos_decay=True):
+    def sch(step):
+        if step < warmup_steps:
+            # Linear warmup
+            mul = (step + 1) / warmup_steps
+            return mul
+        else:
+            # Cosine decay
+            if cos_decay:
+                progress = (step - warmup_steps) / (total_steps - warmup_steps)
+                return (1 + math.cos(math.pi * progress)) / 2
+            else:
+                return 1
+    return sch
 
 
 """

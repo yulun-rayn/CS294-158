@@ -1,53 +1,214 @@
 import functools
-import math
+from packaging import version
+from collections import namedtuple
 
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-def positional_encoding(d_model, max_len):
-    """Generates the sinusoidal positional encodings introduced in [3].
-
-    Copied from https://pytorch.org/tutorials/beginner/transformer_tutorial.html.
-
-    Args:
-        d_model: Dimension of the model (i.e. embedding dimension).
-        max_len: Maximum possible sequence length.
-    Return:
-        Tensor of shape [max_len, 1, d_model] containing the positional encodings.
-    """
-    position = torch.arange(max_len).unsqueeze(1)
-    div_term = torch.exp(torch.arange(0, d_model, 2) * (-math.log(10000.0) / d_model))
-    positional_encoding = torch.zeros(max_len, 1, d_model)
-    positional_encoding[:, 0, 0::2] = torch.sin(position * div_term)
-    positional_encoding[:, 0, 1::2] = torch.cos(position * div_term)
-    return positional_encoding
+from deepul.utils import print_once
 
 
-@functools.lru_cache(maxsize=32)
-def image_positional_encoding(shape):
-    """Generates positional encodings for 2d images.
+class SimpleAttention(nn.Module):
+    def __init__(self, dim: int, heads: int = 8, dim_head: int = 64) -> None:
+        super().__init__()
+        inner_dim = dim_head * heads
+        project_out = not (heads == 1 and dim_head == dim)
 
-    Copied from https://github.com/EugenHotaj/pytorch-generative/blob/master/pytorch_generative/nn/attention.py.
+        self.heads = heads
+        self.scale = dim_head ** -0.5
 
-    The positional encoding is a Tensor of shape (N, 2, H, W) of (x, y) pixel
-    coordinates scaled to be between -.5 and .5.
+        self.attend = nn.Softmax(dim = -1)
+        self.to_qkv = nn.Linear(dim, inner_dim * 3, bias = False)
 
-    Args:
-        shape: NCHW shape of image for which to generate positional encodings.
-    Returns:
-        The positional encodings.
-    """
-    n, _, h, w = shape
-    zeros = torch.zeros(n, 1, h, w)
-    return torch.cat(
-        (
-            (torch.arange(-0.5, 0.5, 1 / h)[None, None, :, None] + zeros),
-            (torch.arange(-0.5, 0.5, 1 / w)[None, None, None, :] + zeros),
-        ),
-        dim=1,
-    )
+        self.to_out = nn.Linear(inner_dim, dim) if project_out else nn.Identity()
+
+    def forward(self, x: torch.FloatTensor) -> torch.FloatTensor:
+        b, n, _ = x.shape
+
+        qkv = self.to_qkv(x)
+        qkv = qkv.reshape(b, n, self.heads, -1).permute(0, 2, 1, 3)
+        q, k, v = qkv.chunk(3, dim = -1)
+
+        attn = torch.matmul(q, k.transpose(-1, -2)) * self.scale
+        attn = self.attend(attn)
+
+        out = torch.matmul(attn, v)
+        out = out.permute(0, 2, 1, 3).reshape(b, n, -1)
+
+        return self.to_out(out)
+
+
+
+AttentionConfig = namedtuple('AttentionConfig', ['enable_flash', 'enable_math', 'enable_mem_efficient'])
+
+
+class RMSNorm(nn.Module):
+    def __init__(self, dim, n_dims=2):
+        super().__init__()
+        self.g = nn.Parameter(torch.ones(1, dim, *[1]*n_dims))
+
+    def forward(self, x):
+        return F.normalize(x, dim=1) * self.g * (x.shape[1] ** 0.5)
+
+
+class Attend(nn.Module):
+    def __init__(self, dropout=0., flash=False, scale=None):
+        super().__init__()
+        self.dropout = dropout
+        self.scale = scale
+        self.attn_dropout = nn.Dropout(dropout)
+
+        self.flash = flash
+        assert not (flash and version.parse(torch.__version__) < version.parse('2.0.0')), 'in order to use flash attention, you must be using pytorch 2.0 or above'
+
+        # determine efficient attention configs for cuda and cpu
+
+        self.cpu_config = AttentionConfig(True, True, True)
+        self.cuda_config = None
+
+        if not torch.cuda.is_available() or not flash:
+            return
+
+        device_properties = torch.cuda.get_device_properties(torch.device('cuda'))
+
+        if device_properties.major == 8 and device_properties.minor == 0:
+            print_once('A100 GPU detected, using flash attention if input tensor is on cuda')
+            self.cuda_config = AttentionConfig(True, False, False)
+        else:
+            print_once('Non-A100 GPU detected, using math or mem efficient attention if input tensor is on cuda')
+            self.cuda_config = AttentionConfig(False, True, True)
+
+    def flash_attn(self, q, k, v):
+        if self.scale is not None:
+            default_scale = q.shape[-1]
+            q = q * (self.scale / default_scale)
+
+        q, k, v = map(lambda t: t.contiguous(), (q, k, v))
+
+        # Check if there is a compatible device for flash attention
+
+        config = self.cuda_config if q.is_cuda else self.cpu_config
+
+        # pytorch 2.0 flash attn: q, k, v, mask, dropout, causal, softmax_scale
+
+        with torch.backends.cuda.sdp_kernel(**config._asdict()):
+            out = F.scaled_dot_product_attention(
+                q, k, v,
+                dropout_p = self.dropout if self.training else 0.
+            )
+
+        return out
+
+    def forward(self, q, k, v):
+        """
+        einstein notation
+        b - batch
+        h - heads
+        n, i, j - sequence length (base sequence length, source, target)
+        d - feature dimension
+        """
+        if self.flash:
+            return self.flash_attn(q, k, v)
+
+        scale = q.shape[-1] ** -0.5 if self.scale is None else self.scale
+
+        # similarity
+
+        sim = torch.einsum(f"b h i d, b h j d -> b h i j", q, k) * scale
+
+        # attention
+
+        attn = sim.softmax(dim = -1)
+        attn = self.attn_dropout(attn)
+
+        # aggregate values
+
+        out = torch.einsum(f"b h i j, b h j d -> b h i d", attn, v)
+
+        return out
+
+
+class Attention(nn.Module):
+    def __init__(self, dim, heads=4, dim_head=32, n_dims=2, num_mem_kv=4, out_norm=False, flash=False):
+        super().__init__()
+        self.heads = heads
+        self.dim_head = dim_head
+        hidden_dim = dim_head * heads
+
+        mod = nn.Conv1d if n_dims==1 else nn.Conv2d if n_dims==2 else nn.Conv3d
+
+        self.norm = RMSNorm(dim, n_dims)
+        self.attend = Attend(flash=flash)
+
+        self.mem_kv = nn.Parameter(torch.randn(2, heads, num_mem_kv, dim_head))
+        self.to_qkv = mod(dim, hidden_dim * 3, 1, bias=False)
+
+        to_out = [mod(hidden_dim, dim, 1)]
+        if out_norm:
+            to_out.append(RMSNorm(dim, n_dims))
+        self.to_out = nn.Sequential(*to_out)
+
+    def forward(self, x):
+        b, _, h, w = x.shape
+
+        x = self.norm(x)
+
+        qkv = self.to_qkv(x).chunk(3, dim=1)
+        q, k, v = map(lambda t: t.view(b, self.heads, self.dim_head, -1).transpose(2, 3), qkv)
+
+        mk, mv = map(lambda t: t.repeat(b, 1, 1, 1), self.mem_kv)
+        k, v = map(functools.partial(torch.cat, dim = -2), ((mk, k), (mv, v)))
+
+        out = self.attend(q, k, v)
+
+        out = out.transpose(2, 3).contiguous().view(b, -1, h, w)
+        return self.to_out(out)
+
+
+class LinearAttention(nn.Module):
+    def __init__(self, dim, heads=4, dim_head=32, n_dims=2, num_mem_kv=4, out_norm=False):
+        super().__init__()
+        self.scale = dim_head ** -0.5
+        self.heads = heads
+        self.dim_head = dim_head
+        hidden_dim = dim_head * heads
+
+        mod = nn.Conv1d if n_dims==1 else nn.Conv2d if n_dims==2 else nn.Conv3d
+
+        self.norm = RMSNorm(dim, n_dims)
+
+        self.mem_kv = nn.Parameter(torch.randn(2, heads, dim_head, num_mem_kv))
+        self.to_qkv = mod(dim, hidden_dim * 3, 1, bias=False)
+
+        to_out = [mod(hidden_dim, dim, 1)]
+        if out_norm:
+            to_out.append(RMSNorm(dim, n_dims))
+        self.to_out = nn.Sequential(*to_out)
+
+    def forward(self, x):
+        b, _, *size = x.shape
+
+        x = self.norm(x)
+
+        qkv = self.to_qkv(x).chunk(3, dim=1)
+        q, k, v = map(lambda t: t.view(b, self.heads, self.dim_head, -1), qkv)
+
+        mk, mv = map(lambda t: t.repeat(b, 1, *[1]*len(size)), self.mem_kv)
+        k, v = map(functools.partial(torch.cat, dim = -1), ((mk, k), (mv, v)))
+
+        q = q.softmax(dim = -2)
+        k = k.softmax(dim = -1)
+
+        q = q * self.scale
+
+        context = torch.einsum('b h d n, b h e n -> b h d e', k, v)
+
+        out = torch.einsum('b h d e, b h d n -> b h e n', context, q)
+        out = out.contiguous().view(b, -1, *size)
+        return self.to_out(out)
+
 
 
 @functools.lru_cache(maxsize=32)
@@ -72,8 +233,8 @@ class CausalAttention(nn.Module):
         in_channels,
         embed_channels=None,
         out_channels=None,
-        n_dims=2,
         n_heads=1,
+        n_dims=2,
         mask_current=False,
         extra_input_channels=0
     ):

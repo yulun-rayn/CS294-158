@@ -2,6 +2,32 @@ import torch
 import torch.nn as nn
 
 
+class FeedForward(nn.Module):
+    def __init__(self, dim, hidden_dim, out_dim=None, activation="relu") -> None:
+        super().__init__()
+        out_dim = dim if out_dim is None else out_dim
+
+        if activation == "relu":
+            act = nn.ReLU
+        elif activation == "silu":
+            act = nn.SiLU
+        elif activation == "tanh":
+            act = nn.Tanh
+        elif activation == "sigmoid":
+            act = nn.Sigmoid
+        else:
+            act = activation
+
+        self.net = nn.Sequential(
+            nn.Linear(dim, hidden_dim),
+            act(),
+            nn.Linear(hidden_dim, out_dim)
+        )
+
+    def forward(self, x: torch.FloatTensor) -> torch.FloatTensor:
+        return self.net(x)
+
+
 class MLP(nn.Module):
     """
     A multilayer perceptron with ReLU activations and optional BatchNorm.

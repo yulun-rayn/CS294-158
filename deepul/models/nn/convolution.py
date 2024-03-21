@@ -2,7 +2,7 @@ import math
 
 import torch
 import torch.nn as nn
-from torch.nn.utils import spectral_norm
+import torch.nn.functional as F
 
 
 class MLConv(nn.Module):
@@ -132,6 +132,27 @@ class GatedActivation(nn.Module):
         return self._activation_fn(x) * torch.sigmoid(gate)
 
 
+class Upsample(nn.Module):
+    def __init__(self, dim, dim_out=None):
+        super().__init__()
+        dim_out = dim if dim_out is None else dim_out
+        self.conv = nn.Conv2d(dim, dim_out, 3, padding=1)
+
+    def forward(self, x):
+        x = F.interpolate(x, scale_factor=2, mode='nearest')
+        return self.conv(x)
+
+
+class Downsample(nn.Module):
+    def __init__(self, dim, dim_out=None):
+        super().__init__()
+        dim_out = dim if dim_out is None else dim_out
+        self.conv = nn.Conv2d(dim, dim_out, 3, stride=2, padding=1)
+
+    def forward(self, x):
+        return self.conv(x)
+
+
 class DepthToSpace(nn.Module):
     def __init__(self, block_size):
         super(DepthToSpace, self).__init__()
@@ -173,9 +194,9 @@ class SpaceToDepth(nn.Module):
         return output.contiguous()
 
 
-class Upsample_Conv2d(nn.Module):
+class UpsampleD2S(nn.Module):
     def __init__(self, in_dim, out_dim, kernel_size=(3, 3), stride=1, padding=1, bias=True):
-        super(Upsample_Conv2d, self).__init__()
+        super(UpsampleD2S, self).__init__()
         self.conv = nn.Conv2d(in_dim, out_dim, kernel_size,
                               stride=stride, padding=padding, bias=bias)
         self.depth_to_space = DepthToSpace(2)
@@ -187,9 +208,9 @@ class Upsample_Conv2d(nn.Module):
         return _x
 
 
-class Downsample_Conv2d(nn.Module):
+class DownsampleS2D(nn.Module):
     def __init__(self, in_dim, out_dim, kernel_size=(3, 3), stride=1, padding=1, bias=True):
-        super(Downsample_Conv2d, self).__init__()
+        super(DownsampleS2D, self).__init__()
         self.conv = nn.Conv2d(in_dim, out_dim, kernel_size,
                               stride=stride, padding=padding, bias=bias)
         self.space_to_depth = SpaceToDepth(2)
@@ -210,12 +231,12 @@ class ResnetBlockUp(nn.Module):
             nn.Conv2d(in_dim, n_filters, kernel_size=(3, 3), padding=1),
             nn.BatchNorm2d(n_filters) if batch_norm else None,
             nn.ReLU(),
-            Upsample_Conv2d(n_filters, n_filters, kernel_size=(3, 3), padding=1)
+            UpsampleD2S(n_filters, n_filters, kernel_size=(3, 3), padding=1)
         ]
 
         layers = [l for l in layers if l is not None]
         self.layers = nn.Sequential(*layers)
-        self.proj = Upsample_Conv2d(in_dim, n_filters, kernel_size=(1, 1), padding=0)
+        self.proj = UpsampleD2S(in_dim, n_filters, kernel_size=(1, 1), padding=0)
 
     def forward(self, x):
         return self.layers(x) + self.proj(x)
@@ -230,12 +251,12 @@ class ResnetBlockDown(nn.Module):
             nn.Conv2d(in_dim, n_filters, kernel_size=(3, 3), padding=1),
             nn.BatchNorm2d(n_filters) if batch_norm else None,
             nn.ReLU(),
-            Downsample_Conv2d(n_filters, n_filters, kernel_size=(3, 3), padding=1)
+            DownsampleS2D(n_filters, n_filters, kernel_size=(3, 3), padding=1)
         ]
 
         layers = [l for l in layers if l is not None]
         self.layers = nn.Sequential(*layers)
-        self.proj = Downsample_Conv2d(in_dim, n_filters, kernel_size=(1, 1), padding=0)
+        self.proj = DownsampleS2D(in_dim, n_filters, kernel_size=(1, 1), padding=0)
 
     def forward(self, x):
         return self.layers(x) + self.proj(x)

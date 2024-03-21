@@ -16,7 +16,7 @@ import scipy.ndimage
 import cv2
 
 import deepul.pytorch_util as ptu
-from deepul.models.inception import GoogLeNet
+from .model_util import GoogLeNet
 from .utils import (
     savefig,
     show_samples,
@@ -170,11 +170,11 @@ def q1_save_results(part, fn):
     losses, samples1, ys1, samples_end, ys_end = fn(data, xs)
 
     # loss plot
-    plot_gan_training(losses, 'Q1{} Losses'.format(part), 'results/q1{}_losses.png'.format(part))
+    plot_gan_training(losses, 'Q1{} Losses'.format(part), 'hw3_latex/figures/q1{}_losses.png'.format(part))
 
     # samples
-    q1_gan_plot(data, samples1, xs, ys1, 'Q1{} Epoch 1'.format(part), 'results/q1{}_epoch1.png'.format(part))
-    q1_gan_plot(data, samples_end, xs, ys_end, 'Q1{} Final'.format(part), 'results/q1{}_final.png'.format(part))
+    q1_gan_plot(data, samples1, xs, ys1, 'Q1{} Epoch 1'.format(part), 'hw3_latex/figures/q1{}_epoch1.png'.format(part))
+    q1_gan_plot(data, samples_end, xs, ys_end, 'Q1{} Final'.format(part), 'hw3_latex/figures/q1{}_final.png'.format(part))
 
 ######################
 ##### Question 2 #####
@@ -219,8 +219,8 @@ def q2_save_results(fn):
     train_losses, samples = fn(train_data)
 
     print("Inception score:", calculate_is(samples.transpose([0, 3, 1, 2])))
-    plot_gan_training(train_losses, 'Q2 Losses', 'results/q2_losses.png')
-    show_samples(samples[:100] * 255.0, fname='results/q2_samples.png', title=f'CIFAR-10 generated samples')
+    plot_gan_training(train_losses, 'Q2 Losses', 'hw3_latex/figures/q2_losses.png')
+    show_samples(samples[:100] * 255.0, fname='hw3_latex/figures/q2_samples.png', title=f'CIFAR-10 generated samples')
 
 ######################
 ##### Question 3 #####
@@ -266,11 +266,11 @@ def q3_save_results(fn, part):
     train_data, test_data = load_q3_data()
     gan_losses, lpips_losses, l2_train_losses, l2_val_losses, recon_show = fn(train_data, test_data, test_data[:100])
 
-    plot_gan_training(gan_losses, f'Q3{part} Discriminator Losses', f'results/q3{part}_gan_losses.png')
-    save_plot(l2_train_losses, l2_val_losses, f'Q3{part} L2 Losses', f'results/q3{part}_l2_losses.png')
-    save_plot(lpips_losses, None, f'Q3{part} LPIPS Losses', f'results/q3{part}_lpips_losses.png')
-    show_samples(test_data[:100].transpose(0, 2, 3, 1) * 255.0, nrow=20, fname=f'results/q3{part}_data_samples.png', title=f'Q3{part} CIFAR10 val samples')
-    show_samples(recon_show * 255.0, nrow=20, fname=f'results/q3{part}_reconstructions.png', title=f'Q3{part} VQGAN reconstructions')
+    plot_gan_training(gan_losses, f'Q3{part} Discriminator Losses', f'hw3_latex/figures/q3{part}_gan_losses.png')
+    save_plot(l2_train_losses, l2_val_losses, f'Q3{part} L2 Losses', f'hw3_latex/figures/q3{part}_l2_losses.png')
+    save_plot(lpips_losses, None, f'Q3{part} LPIPS Losses', f'hw3_latex/figures/q3{part}_lpips_losses.png')
+    show_samples(test_data[:100].transpose(0, 2, 3, 1) * 255.0, nrow=20, fname=f'hw3_latex/figures/q3{part}_data_samples.png', title=f'Q3{part} CIFAR10 val samples')
+    show_samples(recon_show * 255.0, nrow=20, fname=f'hw3_latex/figures/q3{part}_reconstructions.png', title=f'Q3{part} VQGAN reconstructions')
     print('final_val_reconstruction_loss:', l2_val_losses[-1])
 
 ######################
@@ -336,8 +336,8 @@ def q4_save_results(fn):
     colored_mnist_reconstructions = np.concatenate([c2, m3, c3], axis=0)
 
     show_samples(mnist_reconstructions * 255.0, nrow=20,
-                 fname='figures/q4_mnist.png',
+                 fname='hw3_latex/figures/q4_mnist.png',
                  title=f'Source domain: MNIST')
     show_samples(colored_mnist_reconstructions * 255.0, nrow=20,
-                 fname='figures/q4_colored_mnist.png',
+                 fname='hw3_latex/figures/q4_colored_mnist.png',
                  title=f'Source domain: Colored MNIST')

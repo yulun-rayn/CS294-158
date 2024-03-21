@@ -2,10 +2,25 @@ import os
 import pickle
 import textwrap
 from os.path import dirname, exists, join
+from functools import wraps
 
 import matplotlib.pyplot as plt
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
+
+
+def once(fn):
+    called = False
+    @wraps(fn)
+    def inner(x):
+        nonlocal called
+        if called:
+            return
+        called = True
+        return fn(x)
+    return inner
+
+print_once = once(print)
 
 
 def savefig(fname: str, show_figure: bool = True) -> None:

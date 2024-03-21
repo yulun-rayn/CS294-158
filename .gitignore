@@ -9,6 +9,7 @@
 *.out
 *.pdf
 *.gz
+*.txt
 *.pkl
 *.pt
 *.pth
