@@ -19,7 +19,7 @@ class SimpleAttention(nn.Module):
         self.heads = heads
         self.scale = dim_head ** -0.5
 
-        self.attend = nn.Softmax(dim = -1)
+        self.attend = nn.Softmax(dim=-1)
         self.to_qkv = nn.Linear(dim, inner_dim * 3, bias = False)
 
         self.to_out = nn.Linear(inner_dim, dim) if project_out else nn.Identity()
@@ -29,7 +29,7 @@ class SimpleAttention(nn.Module):
 
         qkv = self.to_qkv(x)
         qkv = qkv.reshape(b, n, self.heads, -1).permute(0, 2, 1, 3)
-        q, k, v = qkv.chunk(3, dim = -1)
+        q, k, v = qkv.chunk(3, dim=-1)
 
         attn = torch.matmul(q, k.transpose(-1, -2)) * self.scale
         attn = self.attend(attn)

@@ -20,33 +20,6 @@ def cast_tuple(t, length = 1):
         return t
     return ((t,) * length)
 
-def cosine_alpha_schedule(s=0.008):
-    """
-    cosine schedule
-    as proposed in https://openreview.net/forum?id=-NEXDKk8gZ
-    """
-
-    alpha_0 = math.cos(s / (1 + s) * math.pi * 0.5) ** 2
-    def sch(t):
-        alpha = torch.cos((t + s) / (1 + s) * math.pi * 0.5) ** 2
-        return alpha / alpha_0
-    return sch
-
-def sigmoid_alpha_schedule(start=-3, end=3, tau=1):
-    """
-    sigmoid schedule
-    proposed in https://arxiv.org/abs/2212.11972 - Figure 8
-    better for images > 64x64, when used during training
-    """
-    v_start = torch.tensor(start / tau).sigmoid()
-    v_end = torch.tensor(end / tau).sigmoid()
-
-    alpha_0 = (-(start / tau).sigmoid() + v_end) / (v_end - v_start)
-    def sch(t):
-        alpha = (-((t * (end - start) + start) / tau).sigmoid() + v_end) / (v_end - v_start)
-        return alpha / alpha_0
-    return sch
-
 
 class SinusoidalPosEmb(nn.Module):
     def __init__(self, dim, scale=1000, theta=10000):

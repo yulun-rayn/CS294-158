@@ -216,7 +216,7 @@ class VAE(nn.Module):
         if not isinstance(z, torch.Tensor):
             z = torch.FloatTensor(z)
             z = z.to(next(self.parameters()).device)
-        return self.decoder(self.post_quant(z)).cpu().numpy()
+        return self.decoder(self.post_quant(z))
 
     def forward(self, x):
         posterior = self.encode(x, return_dist=True)

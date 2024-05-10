@@ -326,7 +326,7 @@ class TimeViT(nn.Module):
 
         # time embeddings
 
-        time_dim = dim * 4
+        time_dim = dim
 
         self.random_or_learned_sinusoidal_cond = learned_sinusoidal_cond or random_fourier_features
 

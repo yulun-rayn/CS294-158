@@ -85,8 +85,7 @@ class ScaleShiftTransformer(nn.Module):
                                                      elementwise_affine=False, eps=1e-6)])
             self.layers.append(layer)
 
-        self.final_layer = nn.ModuleList([ScaleShiftPreNorm(dim, nn.Identity(), elementwise_affine=False, eps=1e-6),
-                                          nn.Linear(dim, out_dim)])
+        self.final_layer = ScaleShiftPreNorm(dim, nn.Linear(dim, out_dim), elementwise_affine=False, eps=1e-6)
 
         if time_emb_dim is not None:
             self.modulations = nn.ModuleList([])
@@ -98,16 +97,19 @@ class ScaleShiftTransformer(nn.Module):
             self.final_modulation = nn.Sequential(nn.SiLU(),
                                                   nn.Linear(time_emb_dim, 2 * dim, bias=True))
 
-        self.norm = nn.LayerNorm(dim) if out_norm else None
+        self.norm = nn.LayerNorm(out_dim) if out_norm else None
 
     def forward(self, x: torch.FloatTensor, time_emb: torch.FloatTensor = None) -> torch.FloatTensor:
         for i in range(self.depth):
             shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = (
-                self.modulations[i](time_emb).chunk(6, dim=1) if time_emb is not None else [None]*6
+                self.modulations[i](time_emb).unsqueeze(1).chunk(6, dim=2) if time_emb is not None else [None]*6
             )
-
             attn, ff = self.layers[i]
-            x = x + gate_msa.unsqueeze(1) * attn(x, scale=scale_msa.unsqueeze(1), shift=shift_msa.unsqueeze(1))
-            x = x + gate_mlp.unsqueeze(1) * ff(x, scale=scale_mlp.unsqueeze(1), shift=shift_mlp.unsqueeze(1))
+            x = x + gate_msa * attn(x, scale=scale_msa, shift=shift_msa)
+            x = x + gate_mlp * ff(x, scale=scale_mlp, shift=shift_mlp)
+        shift_mlp, scale_mlp = (
+            self.final_modulation(time_emb).unsqueeze(1).chunk(2, dim=2) if time_emb is not None else [None]*2
+        )
+        x = self.final_layer(x, scale=scale_mlp, shift=shift_mlp)
 
         return self.norm(x) if self.norm is not None else x
